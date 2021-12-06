@@ -1,0 +1,49 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Nov 26 20:49:04 2021
+
+@author: alexi
+"""
+# Projet - Estimation de parametres : Fluctuations de l'AVAX
+
+import pandas as pd
+from binance.client import Client
+import matplotlib.pyplot as plt
+import numpy as np
+
+client = Client()
+
+data_avaxeur = client.get_historical_klines("AVAXEUR", Client.KLINE_INTERVAL_1WEEK, "01 january 2021")
+
+df = pd.DataFrame(data_avaxeur, columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_av', 'trades', 'tb_base_av', 'tb_quote_av', 'ignore' ])
+df['close'] = pd.to_numeric(df['close'])
+df['high'] = pd.to_numeric(df['high'])
+df['low'] = pd.to_numeric(df['low'])
+df['open'] = pd.to_numeric(df['open'])
+
+df = df.set_index(df['timestamp'])
+df.index = pd.to_datetime(df.index, unit='ms')
+del df['timestamp']
+del df['ignore']
+df['close_time'] = pd.to_datetime(df['close_time'], unit='ms')
+
+from scipy.linalg import toeplitz
+from numpy.linalg import inv
+
+def estimated_autocorrelation(x):
+    n = len(x)
+    variance = x.var()
+    x = x-x.mean()
+    r = np.correlate(x, x, mode = 'full')[-n:]
+    #assert N.allclose(r, N.array([(x[:n-k]*x[-(n-k):]).sum() for k in range(n)]))
+    result = r/(variance*(np.arange(n, 0, -1)))
+    return result
+
+X = df['open'] # Parametre observés
+Rx = estimated_autocorrelation(X)
+Gamma = toeplitz(Rx)
+coeff = np.dot(inv(Gamma),Rx)
+
+predict = np.dot(coeff,Rx)
+plt.plot(Rx)
+print(predict*X[-1])
